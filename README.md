@@ -6,11 +6,13 @@ Painel web em Flask para centralizar e executar automações locais. A aplicaç�
 
 - Python 3.12
 - Flask
+- Gunicorn para execução em produção
 - SQLite com `sqlite3`
 - Docker e Docker Compose
 - `uv`
 - Tailwind CSS via CDN
 - JavaScript nativo com `fetch`
+- Sessão Flask com autenticação por `.env`
 - Google APIs para a automação de Obras da CPFL
 - Google Sheets/Drive para a automação de Atualização do Drive
 - `pandas`, `openpyxl` e `gspread` para leitura da planilha e escrita no Google Sheets
@@ -30,7 +32,7 @@ Acesse:
 http://localhost:5000
 ```
 
-O Compose publica a porta apenas em `127.0.0.1:5000`, lê o `.env` por `env_file`, monta credenciais/token Google como leitura em `/run/secrets/` e persiste o SQLite no volume `automation_data`.
+O Compose publica a porta apenas em `127.0.0.1:5000`, lê o `.env` por `env_file`, monta credenciais/token Google como leitura em `/run/secrets/`, persiste o SQLite no volume `automation_data` e executa a aplicação com Gunicorn usando um único worker.
 
 Outros comandos:
 
@@ -53,11 +55,20 @@ uv run flask --app app run --debug
 
 Para execução local, exporte as variáveis de ambiente antes de iniciar o Flask. A aplicação não carrega `.env` manualmente nos módulos Python.
 
+Para produção ou simulação local do comando usado no container:
+
+```bash
+uv run gunicorn --bind 0.0.0.0:5000 --workers 1 --threads 4 app:app
+```
+
+Use somente um worker, porque o bloqueio de execuções, logs em tempo real e estado de automações em andamento ficam em memória dentro do processo Flask.
+
 ## Estrutura
 
 ```text
 .
 ├── app.py
+├── auth.py
 ├── automation_errors.py
 ├── automation_registry.py
 ├── automation_service.py
@@ -82,6 +93,8 @@ Para execução local, exporte as variáveis de ambiente antes de iniciar o Flas
 │       └── utils/
 │           └── parse_workes_response.py
 ├── templates/
+│   ├── index.html
+│   └── login.html
 ├── static/
 ├── tests/
 ├── upload_service.py
@@ -95,6 +108,7 @@ Para execução local, exporte as variáveis de ambiente antes de iniciar o Flas
 ## Responsabilidades
 
 - `app.py`: instância Flask, handlers HTTP e rotas.
+- `auth.py`: validação de credenciais, sessão, CSRF, decorator de autenticação e rate limit de login.
 - `automation_registry.py`: cadastro explícito das automações disponíveis.
 - `automation_service.py`: controle de execução, thread, bloqueio duplicado, histórico e payload dos cards.
 - `automation_service.py`: também captura logs emitidos pela thread da automação para exibição no card durante o polling.
@@ -104,6 +118,102 @@ Para execução local, exporte as variáveis de ambiente antes de iniciar o Flas
 - `upload_service.py`: validação, gravação temporária e limpeza dos uploads `.xlsx`.
 - `automations/works_cpfl/runner.py`: ponto de entrada da automação real de Obras da CPFL.
 - `automations/drive/runner.py`: ponto de entrada da automação real de Atualização do Drive.
+
+## Autenticação
+
+A aplicação possui uma tela de login em:
+
+```text
+GET /login
+POST /login
+POST /logout
+```
+
+Não há cadastro de usuários, banco de usuários ou múltiplos perfis. O login compara exatamente os valores enviados com as variáveis de ambiente:
+
+```text
+USER_APP
+PASSWORD
+```
+
+A comparação usa `hmac.compare_digest()`. A sessão armazena somente:
+
+```python
+session["authenticated"] = True
+```
+
+A senha não é salva na sessão, no SQLite ou no HTML.
+
+Rotas protegidas:
+
+- `GET /`
+- `GET /api/automations`
+- `POST /api/automations/<automation_id>/run`
+
+Chamadas de API sem autenticação retornam:
+
+```json
+{"error": "Autenticação necessária."}
+```
+
+com status `401`. Páginas HTML sem autenticação redirecionam para `/login`.
+
+O logout usa somente `POST /logout` e limpa a sessão com `session.clear()`.
+
+### CSRF
+
+As rotas mutáveis usam um token CSRF simples armazenado na sessão:
+
+- `POST /login` recebe o token por campo oculto;
+- `POST /logout` recebe o token por campo oculto;
+- `POST /api/automations/<automation_id>/run` recebe o token no header `X-CSRF-Token`.
+
+O JavaScript redireciona para `/login` quando uma API retorna `401`.
+
+### Rate Limit
+
+O login possui rate limit em memória por IP:
+
+```text
+5 tentativas em 15 minutos, com bloqueio temporário de 15 minutos
+```
+
+Esses valores podem ser ajustados por ambiente. Como o controle fica em memória, ele é perdido ao reiniciar o container e não funciona entre múltiplas réplicas. Para este projeto, mantenha uma única réplica.
+
+### Sessão e Cookies
+
+Configurações aplicadas:
+
+```text
+SESSION_COOKIE_HTTPONLY=True
+SESSION_COOKIE_SAMESITE=Lax
+PERMANENT_SESSION_LIFETIME=12 horas
+```
+
+`SESSION_COOKIE_SECURE` é configurável por ambiente. Use:
+
+```env
+SESSION_COOKIE_SECURE=false
+```
+
+em desenvolvimento local sem HTTPS, e:
+
+```env
+SESSION_COOKIE_SECURE=true
+```
+
+na VPS atrás de HTTPS.
+
+Também há headers básicos:
+
+```text
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: strict-origin-when-cross-origin
+Content-Security-Policy
+```
+
+A CSP permite o Tailwind via CDN nesta versão. Para endurecer a política em produção, o ideal é substituir o Tailwind CDN por um build local.
 
 ## Automação Obras da CPFL
 
@@ -176,6 +286,39 @@ O fluxo antigo de projeto independente foi incorporado ao ambiente principal. Fo
 
 ## Variáveis de ambiente
 
+Obrigatórias para autenticação:
+
+```text
+USER_APP
+PASSWORD
+SECRET_KEY
+```
+
+`SECRET_KEY` deve ser longa e aleatória, com pelo menos 32 caracteres, e deve ser diferente de `PASSWORD`. Gere uma chave com:
+
+```bash
+uv run python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Exemplo sem dados reais:
+
+```env
+USER_APP=admin
+PASSWORD=use-uma-senha-longa
+SECRET_KEY=gere-uma-chave-aleatoria
+SESSION_COOKIE_SECURE=false
+TRUST_PROXY=false
+```
+
+Para produção atrás de proxy reverso com HTTPS:
+
+```env
+SESSION_COOKIE_SECURE=true
+TRUST_PROXY=true
+```
+
+`USER_APP` foi usado para evitar conflito com a variável padrão `USER` comum em Linux e containers. Se credenciais forem alteradas no `.env`, reinicie o container.
+
 Obrigatórias para Obras da CPFL:
 
 ```text
@@ -216,6 +359,7 @@ Opcional:
 MAX_UPLOAD_SIZE_MB
 MAX_XLSX_UNCOMPRESSED_SIZE_MB
 MAX_SPREADSHEET_ROWS
+MAX_SPREADSHEET_COLUMNS
 MAX_SPREADSHEET_CELLS
 UPLOAD_TEMP_DIR
 ```
@@ -257,6 +401,9 @@ Execução interrompida por reinicialização da aplicação.
 ## API
 
 - `GET /`
+- `GET /login`
+- `POST /login`
+- `POST /logout`
 - `GET /api/automations`
 - `POST /api/automations/<automation_id>/run`
 
@@ -269,6 +416,9 @@ Status esperados:
 
 - `200` para consultas;
 - `202` ao iniciar;
+- `302` para redirecionamentos de login/logout;
+- `400` para CSRF inválido;
+- `401` para API sem autenticação ou login inválido;
 - `403` para POST de origem incompatível;
 - `404` para automação inexistente;
 - `409` quando já está em execução;
@@ -293,7 +443,9 @@ Para automações que exigem arquivo de entrada, cadastre o runner e trate o upl
 
 - Threads locais não substituem uma fila de tarefas.
 - SQLite é adequado para uso local e baixa concorrência.
-- O controle em memória pressupõe um único processo Flask.
-- O Compose padrão não usa modo debug por causa das credenciais reais montadas no container.
-- Antes de expor na internet, adicione autenticação, autorização, CSRF completo, HTTPS, proxy reverso, servidor WSGI adequado e uma estratégia de background mais robusta.
+- O controle em memória pressupõe um único processo Flask e um único worker Gunicorn.
+- O Compose padrão usa Gunicorn e não modo debug.
+- A autenticação por usuário único em `.env` é uma barreira simples, não um sistema completo de identidade.
+- Não exponha diretamente a porta do Flask na internet. Use proxy reverso com HTTPS e firewall liberando apenas as portas necessárias.
+- Em produção, mantenha `SESSION_COOKIE_SECURE=true`, `TRUST_PROXY=true` somente atrás de proxy confiável, debug desativado e uma única réplica.
 - A Atualização do Drive escreve em uma planilha externa configurada por ambiente; testes automatizados não fazem chamadas reais ao Google.

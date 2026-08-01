@@ -35,7 +35,7 @@ async function handleRunClick(event) {
   clearPageMessage();
 
   try {
-    const response = await fetch(`/api/automations/${automationId}/run`, {
+    const response = await authenticatedFetch(`/api/automations/${automationId}/run`, {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -143,7 +143,7 @@ async function submitDriveUpload() {
   clearPageMessage();
 
   try {
-    const response = await fetch("/api/automations/drive-update/run", {
+    const response = await authenticatedFetch("/api/automations/drive-update/run", {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -231,7 +231,7 @@ function getDriveModal() {
 
 async function refreshAutomations() {
   try {
-    const response = await fetch("/api/automations", {
+    const response = await authenticatedFetch("/api/automations", {
       headers: {
         Accept: "application/json",
       },
@@ -396,4 +396,28 @@ function clearPageMessage() {
   const pageMessage = document.getElementById("page-message");
   pageMessage.textContent = "";
   pageMessage.classList.add("hidden");
+}
+
+async function authenticatedFetch(url, options = {}) {
+  const fetchOptions = {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+    },
+  };
+
+  if ((fetchOptions.method || "GET").toUpperCase() === "POST") {
+    fetchOptions.headers["X-CSRF-Token"] = getCsrfToken();
+  }
+
+  const response = await fetch(url, fetchOptions);
+  if (response.status === 401) {
+    window.location.href = "/login";
+  }
+  return response;
+}
+
+function getCsrfToken() {
+  const token = document.querySelector("meta[name='csrf-token']");
+  return token ? token.getAttribute("content") : "";
 }

@@ -1,17 +1,36 @@
 import logging
 import os
 import traceback
+from datetime import timedelta
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.exceptions import HTTPException
+from werkzeug.middleware.proxy_fix import ProxyFix
 
+from auth import (
+    authenticate_session,
+    check_login_attempt,
+    csrf_error_response,
+    csrf_token_from_request,
+    get_csrf_token,
+    is_authenticated,
+    login_required,
+    validate_auth_config,
+    validate_csrf_token,
+)
 from automation_service import (
     bootstrap_automation_service,
     is_automation_running,
     list_automations,
     start_automation,
 )
-from config import MAX_UPLOAD_SIZE_BYTES
+from config import (
+    MAX_UPLOAD_SIZE_BYTES,
+    SECRET_KEY,
+    SESSION_COOKIE_SECURE,
+    SESSION_LIFETIME_HOURS,
+    TRUST_PROXY,
+)
 from upload_service import UploadValidationError, cleanup_upload, prepare_xlsx_upload
 
 
@@ -19,7 +38,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+if TRUST_PROXY:
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+validate_auth_config()
+app.config["SECRET_KEY"] = SECRET_KEY
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE_BYTES
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = SESSION_COOKIE_SECURE
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=SESSION_LIFETIME_HOURS)
 
 
 def is_same_origin():
@@ -43,6 +71,18 @@ def reject_cross_origin_posts():
             return jsonify({"error": "Origem da requisição não permitida."}), 403
 
 
+@app.after_request
+def add_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self' https://cdn.tailwindcss.com 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'self'; frame-ancestors 'none'",
+    )
+    return response
+
+
 @app.errorhandler(Exception)
 def handle_unexpected_error(error):
     if isinstance(error, HTTPException):
@@ -62,17 +102,86 @@ def handle_unexpected_error(error):
 
 
 @app.route("/")
+@login_required
 def index():
-    return render_template("index.html", automations=list_automations())
+    return render_template(
+        "index.html",
+        automations=list_automations(),
+        csrf_token=get_csrf_token(),
+    )
+
+
+@app.get("/login")
+def login():
+    if is_authenticated():
+        return redirect(url_for("index"))
+    return render_template("login.html", csrf_token=get_csrf_token(), error_message=None)
+
+
+@app.post("/login")
+def login_post():
+    if not validate_csrf_token(csrf_token_from_request()):
+        return csrf_error_response()
+
+    username = request.form.get("username", "")
+    password = request.form.get("password", "")
+    if not username or not password:
+        return (
+            render_template(
+                "login.html",
+                csrf_token=get_csrf_token(),
+                error_message="Informe o usuário e a senha.",
+            ),
+            400,
+        )
+
+    login_status = check_login_attempt(username, password)
+    if login_status == "blocked":
+        return (
+            render_template(
+                "login.html",
+                csrf_token=get_csrf_token(),
+                error_message="Muitas tentativas. Aguarde alguns minutos e tente novamente.",
+            ),
+            429,
+        )
+
+    if login_status != "valid":
+        return (
+            render_template(
+                "login.html",
+                csrf_token=get_csrf_token(),
+                error_message="Usuário ou senha inválidos.",
+            ),
+            401,
+        )
+
+    authenticate_session()
+    return redirect(url_for("index"))
+
+
+@app.post("/logout")
+@login_required
+def logout():
+    if not validate_csrf_token(csrf_token_from_request()):
+        return csrf_error_response()
+
+    session.clear()
+    return redirect(url_for("login"))
 
 
 @app.get("/api/automations")
+@login_required
 def api_automations():
     return jsonify({"automations": list_automations()}), 200
 
 
 @app.post("/api/automations/<automation_id>/run")
+@login_required
 def run_automation(automation_id):
+    if not validate_csrf_token(csrf_token_from_request()):
+        return csrf_error_response()
+
     prepared_upload = None
     runner_kwargs = None
     cleanup_callback = None
