@@ -7,15 +7,19 @@ from werkzeug.exceptions import HTTPException
 
 from automation_service import (
     bootstrap_automation_service,
+    is_automation_running,
     list_automations,
     start_automation,
 )
+from config import MAX_UPLOAD_SIZE_BYTES
+from upload_service import UploadValidationError, cleanup_upload, prepare_xlsx_upload
 
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE_BYTES
 
 
 def is_same_origin():
@@ -43,6 +47,8 @@ def reject_cross_origin_posts():
 def handle_unexpected_error(error):
     if isinstance(error, HTTPException):
         if request.path.startswith("/api/"):
+            if error.code == 413:
+                return jsonify({"error": "Arquivo acima do limite permitido."}), 413
             return jsonify({"error": error.description}), error.code
 
         return error
@@ -67,15 +73,51 @@ def api_automations():
 
 @app.post("/api/automations/<automation_id>/run")
 def run_automation(automation_id):
-    status, automation = start_automation(automation_id)
+    prepared_upload = None
+    runner_kwargs = None
+    cleanup_callback = None
+
+    if automation_id == "drive-update":
+        if is_automation_running(automation_id):
+            return jsonify({"error": "A automação de atualização do Drive já está em execução."}), 409
+
+        try:
+            prepared_upload = prepare_xlsx_upload(request.files.get("file"))
+        except UploadValidationError as error:
+            logger.info(
+                "Upload da automação do Drive rejeitado: %s",
+                str(error),
+            )
+            return jsonify({"error": str(error)}), error.status_code
+
+        runner_kwargs = {"input_file": prepared_upload.input_file}
+
+        def cleanup_prepared_upload():
+            cleanup_upload(prepared_upload)
+
+        cleanup_callback = cleanup_prepared_upload
+
+    status, automation = start_automation(
+        automation_id,
+        runner_kwargs=runner_kwargs,
+        cleanup_callback=cleanup_callback,
+    )
 
     if status == "not_found":
+        if prepared_upload:
+            cleanup_upload(prepared_upload)
         return jsonify({"error": "Automação não encontrada."}), 404
 
     if status == "already_running":
+        if prepared_upload:
+            cleanup_upload(prepared_upload)
+        if automation_id == "drive-update":
+            return jsonify({"error": "A automação de atualização do Drive já está em execução."}), 409
         return jsonify({"error": "Esta automação já está em execução."}), 409
 
     if status == "start_error":
+        if prepared_upload:
+            cleanup_upload(prepared_upload)
         return jsonify({"error": "Não foi possível iniciar a automação."}), 500
 
     return (

@@ -1,4 +1,4 @@
-from automations.drive_update import run as run_drive_update
+from automations.drive.runner import run as run_drive_update
 from automations.works_cpfl.runner import run as run_cpfl_works
 
 
@@ -12,5 +12,6 @@ AUTOMATIONS = {
         "name": "Atualização do Drive",
         "description": "Atualiza os arquivos e dados armazenados no Google Drive.",
         "runner": run_drive_update,
+        "requires_file": True,
     },
 }

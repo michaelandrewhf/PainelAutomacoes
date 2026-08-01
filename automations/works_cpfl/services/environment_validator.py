@@ -101,7 +101,7 @@ class EnvironmentValidator:
         gmail_service: Any | None = None,
         drive_service: Any | None = None,
     ):
-        self.environ = environ or self._config_environ()
+        self.environ = self._config_environ() if environ is None else environ
         self.credentials_loader = credentials_loader
         self.gmail_service = gmail_service
         self.drive_service = drive_service

@@ -9,5 +9,8 @@ dependencies = [
     "google-api-python-client>=2.187.0,<3.0.0",
     "google-auth>=2.43.0,<3.0.0",
     "google-auth-oauthlib>=1.2.3,<2.0.0",
+    "gspread==6.2.1",
+    "openpyxl>=3.1.5,<4.0.0",
+    "pandas>=2.2.3,<3.0.0",
     "requests>=2.32.5,<3.0.0",
 ]

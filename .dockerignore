@@ -11,4 +11,6 @@ client_secret*.json
 __pycache__
 *.pyc
 data/*.db
+data/drive/
+data/uploads/
 README.md

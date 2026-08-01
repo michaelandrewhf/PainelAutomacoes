@@ -12,6 +12,7 @@ from database import (
     get_last_runs_by_automation,
     init_db,
 )
+from upload_service import cleanup_stale_uploads
 
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,9 @@ log_handler_installed = False
 
 class AutomationLogHandler(logging.Handler):
     def emit(self, record):
+        if record.levelno >= logging.ERROR:
+            return
+
         if not (
             record.name == __name__
             or record.name.startswith("automations.")
@@ -71,6 +75,11 @@ def get_execution_logs(automation_id):
         return list(execution_logs.get(automation_id, []))
 
 
+def is_automation_running(automation_id):
+    with running_lock:
+        return automation_id in running_automations
+
+
 def register_log_thread(automation_id):
     with logs_lock:
         log_threads[get_ident()] = automation_id
@@ -83,6 +92,13 @@ def unregister_log_thread():
 
 def utc_now_iso():
     return datetime.now(UTC).replace(microsecond=0).isoformat()
+
+
+def format_traceback_locations(traceback_object):
+    return "\n".join(
+        f'  File "{frame.filename}", line {frame.lineno}, in {frame.name}'
+        for frame in traceback.extract_tb(traceback_object)
+    )
 
 
 def format_duration(seconds):
@@ -120,6 +136,7 @@ def automation_payload(automation_id, config, last_run):
         "id": automation_id,
         "name": config["name"],
         "description": config["description"],
+        "requires_file": bool(config.get("requires_file")),
         "status": status,
         "last_started_at": last_run["started_at"] if last_run else None,
         "last_finished_at": last_run["finished_at"] if last_run else None,
@@ -139,14 +156,15 @@ def list_automations():
     ]
 
 
-def execute_automation(automation_id, run_id, runner):
+def execute_automation(automation_id, run_id, runner, runner_kwargs=None, cleanup_callback=None):
     status = "success"
     error_message = None
+    runner_kwargs = runner_kwargs or {}
     register_log_thread(automation_id)
 
     try:
         logger.info("Starting automation %s", automation_id)
-        runner()
+        runner(**runner_kwargs)
         logger.info("Finished automation %s", automation_id)
     except Exception as exc:
         status = "error"
@@ -154,11 +172,17 @@ def execute_automation(automation_id, run_id, runner):
             str(exc) if isinstance(exc, PublicAutomationError) else GENERIC_AUTOMATION_ERROR
         )
         logger.error(
-            "Automation %s failed with %s. Technical details are hidden from logs by default.",
+            "Automation %s failed with %s.\n%s",
             automation_id,
             exc.__class__.__name__,
+            format_traceback_locations(exc.__traceback__),
         )
     finally:
+        if cleanup_callback:
+            try:
+                cleanup_callback()
+            except Exception:
+                logger.exception("Falha ao limpar recursos temporários da automação")
         try:
             finished_at = utc_now_iso()
             finish_run(run_id, finished_at, status, error_message)
@@ -168,6 +192,8 @@ def execute_automation(automation_id, run_id, runner):
                 automation_id,
                 traceback.format_exc(),
             )
+            with running_lock:
+                running_automations.discard(automation_id)
             unregister_log_thread()
             return
 
@@ -176,7 +202,7 @@ def execute_automation(automation_id, run_id, runner):
         unregister_log_thread()
 
 
-def start_automation(automation_id):
+def start_automation(automation_id, runner_kwargs=None, cleanup_callback=None):
     config = get_automation(automation_id)
     if config is None:
         return "not_found", None
@@ -194,7 +220,7 @@ def start_automation(automation_id):
             run_id = create_run(automation_id, started_at)
             thread = Thread(
                 target=execute_automation,
-                args=(automation_id, run_id, config["runner"]),
+                args=(automation_id, run_id, config["runner"], runner_kwargs, cleanup_callback),
                 daemon=True,
             )
             thread.start()
@@ -207,6 +233,8 @@ def start_automation(automation_id):
                     "error",
                     "Não foi possível iniciar a automação.",
                 )
+            if cleanup_callback:
+                cleanup_callback()
             logger.error("Failed to start automation run.\n%s", traceback.format_exc())
             return "start_error", None
 
@@ -227,6 +255,7 @@ def start_automation(automation_id):
 def bootstrap_automation_service():
     install_log_handler()
     init_db()
+    cleanup_stale_uploads()
     interrupted = finish_interrupted_runs("Execução interrompida por reinicialização da aplicação.")
     if interrupted:
         logger.warning("Marked %s interrupted automation run(s) as error.", interrupted)
