@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 
-
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DEFAULT_DATABASE_PATH = DATA_DIR / "automations.db"
@@ -53,7 +52,9 @@ CPFL_CITY_IDS = {
     "Paulinia": 116,
 }
 
+RANGE_DAYS_CONSULT = int(env("RANGE_DAYS_CONSULT", "3"))
 SEND_NUMBERS = env("SEND_NUMBERS")
+
 
 EVO_API_KEY = env("EVO_API_KEY")
 EVO_URL = env("EVO_URL")

@@ -4,14 +4,13 @@ import logging
 import requests
 
 from automation_errors import PublicAutomationError
-from config import CPFL_API_URL, CPFL_CITY_IDS
+from config import CPFL_API_URL, CPFL_CITY_IDS, RANGE_DAYS_CONSULT
 
 from automations.works_cpfl.utils.parse_workes_response import (
     CPFLWork,
     complete_response,
     format_response,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,9 @@ class CPFLWorksClient:
 
     def __init__(self):
         self.__start_date: datetime = datetime.now().date()
-        self.__end_date: datetime = self.__start_date + timedelta(days=7)
+        self.__end_date: datetime = self.__start_date + timedelta(
+            days=RANGE_DAYS_CONSULT
+        )
         self.__url = CPFL_API_URL
         self.__city: dict = CPFL_CITY_IDS
 
