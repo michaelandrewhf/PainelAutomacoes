@@ -1,0 +1,14 @@
+.git
+.gitignore
+.venv
+.env
+*.env
+data/google/
+*credentials*.json
+*credential*.json
+*token*.json
+client_secret*.json
+__pycache__
+*.pyc
+data/*.db
+README.md
