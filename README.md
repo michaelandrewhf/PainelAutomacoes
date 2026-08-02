@@ -439,13 +439,21 @@ Cadastre em `automation_registry.py` com `id`, `name`, `description` e `runner`.
 
 Para automações que exigem arquivo de entrada, cadastre o runner e trate o upload na rota/serviço correspondente. O runner deve receber explicitamente um `Path`; não use caminhos enviados pelo usuário nem procure arquivos no filesystem.
 
-## Limitações
+## Decisões de escopo
 
-- Threads locais não substituem uma fila de tarefas.
-- SQLite é adequado para uso local e baixa concorrência.
-- O controle em memória pressupõe um único processo Flask e um único worker Gunicorn.
-- O Compose padrão usa Gunicorn e não modo debug.
-- A autenticação por usuário único em `.env` é uma barreira simples, não um sistema completo de identidade.
-- Não exponha diretamente a porta do Flask na internet. Use proxy reverso com HTTPS e firewall liberando apenas as portas necessárias.
-- Em produção, mantenha `SESSION_COOKIE_SECURE=true`, `TRUST_PROXY=true` somente atrás de proxy confiável, debug desativado e uma única réplica.
-- A Atualização do Drive escreve em uma planilha externa configurada por ambiente; testes automatizados não fazem chamadas reais ao Google.
+Este projeto foi projetado deliberadamente para uso pessoal, com um único usuário e baixa frequência de execução, em torno de duas ou três automações manuais por dia. A prioridade é manter operação simples, baixo custo e manutenção direta, sem infraestrutura distribuída desnecessária.
+
+Por esse motivo, algumas escolhas são intencionais:
+
+- SQLite persistido em volume em vez de banco externo.
+- Threads locais em vez de fila distribuída.
+- Gunicorn com um único worker para manter bloqueios, logs em tempo real e estado de execução consistentes em memória.
+- Autenticação simples por variáveis de ambiente, sem cadastro ou gerenciamento de usuários.
+- Ausência de Redis, Celery, múltiplas réplicas e escalabilidade horizontal.
+- Docker, Docker Compose e `uv` como base de execução reprodutível na VPS.
+
+Essas decisões são adequadas ao volume atual e deixam claro o escopo do sistema. Se o projeto evoluir para múltiplos usuários, execuções frequentes, SLA maior ou múltiplas réplicas, a arquitetura deverá ser revista.
+
+Para publicação na internet, mantenha a aplicação atrás de proxy reverso com HTTPS e firewall, use `SESSION_COOKIE_SECURE=true`, habilite `TRUST_PROXY=true` somente atrás de proxy confiável e não exponha diretamente a porta do Flask.
+
+A Atualização do Drive escreve em uma planilha externa configurada por ambiente; por isso, os testes automatizados substituem runners e não fazem chamadas reais ao Google.

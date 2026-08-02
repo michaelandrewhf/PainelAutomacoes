@@ -21,10 +21,6 @@ LOGIN_ATTEMPTS = {}
 LOGIN_ATTEMPTS_LOCK = Lock()
 
 
-class AuthConfigurationError(RuntimeError):
-    pass
-
-
 def validate_auth_config() -> None:
     required = {
         "USER_APP": AUTH_USER,
@@ -33,17 +29,17 @@ def validate_auth_config() -> None:
     }
     missing = [name for name, value in required.items() if not value]
     if missing:
-        raise AuthConfigurationError(
+        raise RuntimeError(
             f"Variável de ambiente {missing[0]} não configurada."
         )
 
     if len(SECRET_KEY) < 32:
-        raise AuthConfigurationError(
+        raise RuntimeError(
             "Variável de ambiente SECRET_KEY deve ter pelo menos 32 caracteres."
         )
 
     if compare_digest(SECRET_KEY, AUTH_PASSWORD):
-        raise AuthConfigurationError(
+        raise RuntimeError(
             "SECRET_KEY e PASSWORD devem possuir valores diferentes."
         )
 
@@ -137,40 +133,3 @@ def csrf_error_response():
 
 def client_ip() -> str:
     return request.remote_addr or "unknown"
-
-
-def is_login_rate_limited(ip_address: str | None = None) -> bool:
-    ip_address = ip_address or client_ip()
-    now = time.time()
-    with LOGIN_ATTEMPTS_LOCK:
-        state = LOGIN_ATTEMPTS.get(ip_address)
-        if not state:
-            return False
-
-        if state.get("blocked_until", 0) > now:
-            return True
-
-        if now - state.get("window_start", now) > LOGIN_RATE_LIMIT_WINDOW_SECONDS:
-            LOGIN_ATTEMPTS.pop(ip_address, None)
-
-        return False
-
-
-def record_failed_login(ip_address: str | None = None) -> None:
-    ip_address = ip_address or client_ip()
-    now = time.time()
-    with LOGIN_ATTEMPTS_LOCK:
-        state = LOGIN_ATTEMPTS.get(ip_address)
-        if not state or now - state["window_start"] > LOGIN_RATE_LIMIT_WINDOW_SECONDS:
-            state = {"window_start": now, "attempts": 0, "blocked_until": 0}
-
-        state["attempts"] += 1
-        if state["attempts"] >= LOGIN_RATE_LIMIT_ATTEMPTS:
-            state["blocked_until"] = now + LOGIN_RATE_LIMIT_BLOCK_SECONDS
-
-        LOGIN_ATTEMPTS[ip_address] = state
-
-
-def clear_failed_logins(ip_address: str | None = None) -> None:
-    with LOGIN_ATTEMPTS_LOCK:
-        LOGIN_ATTEMPTS.pop(ip_address or client_ip(), None)

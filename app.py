@@ -2,6 +2,7 @@ import logging
 import os
 import traceback
 from datetime import timedelta
+from functools import partial
 
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.exceptions import HTTPException
@@ -201,10 +202,7 @@ def run_automation(automation_id):
 
         runner_kwargs = {"input_file": prepared_upload.input_file}
 
-        def cleanup_prepared_upload():
-            cleanup_upload(prepared_upload)
-
-        cleanup_callback = cleanup_prepared_upload
+        cleanup_callback = partial(cleanup_upload, prepared_upload)
 
     status, automation = start_automation(
         automation_id,
