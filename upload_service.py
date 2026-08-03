@@ -19,7 +19,6 @@ from config import (
     UPLOAD_TEMP_DIR,
 )
 
-
 logger = logging.getLogger(__name__)
 ALLOWED_EXTENSION = ".xlsx"
 
@@ -40,7 +39,7 @@ class PreparedUpload:
 
 def prepare_xlsx_upload(file_storage: FileStorage | None) -> PreparedUpload:
     if file_storage is None or not file_storage.filename:
-        raise UploadValidationError(
+        raise ValueError(
             "Selecione um arquivo .xlsx para executar a automação.",
             400,
         )
@@ -48,7 +47,7 @@ def prepare_xlsx_upload(file_storage: FileStorage | None) -> PreparedUpload:
     original_filename = Path(file_storage.filename).name
     suffixes = Path(original_filename).suffixes
     if len(suffixes) != 1 or suffixes[0].casefold() != ALLOWED_EXTENSION:
-        raise UploadValidationError("Formato inválido. Envie somente arquivos .xlsx.", 400)
+        raise ValueError("Formato inválido. Envie somente arquivos .xlsx.", 400)
 
     execution_dir = UPLOAD_TEMP_DIR / uuid4().hex
     execution_dir.mkdir(parents=True, exist_ok=False)
@@ -105,11 +104,21 @@ def validate_xlsx_file(input_file: Path) -> None:
             ),
             None,
         )
-        if header_row and len(header_row) > MAX_SPREADSHEET_COLUMNS and any(header_row[MAX_SPREADSHEET_COLUMNS:]):
-            raise UploadValidationError("A planilha excede o limite de colunas permitido.", 422)
+        if (
+            header_row
+            and len(header_row) > MAX_SPREADSHEET_COLUMNS
+            and any(header_row[MAX_SPREADSHEET_COLUMNS:])
+        ):
+            raise UploadValidationError(
+                "A planilha excede o limite de colunas permitido.", 422
+            )
 
-        headers = {str(value).strip() for value in header_row or [] if value is not None}
-        missing_columns = [column for column in REQUIRED_COLUMNS if column not in headers]
+        headers = {
+            str(value).strip() for value in header_row or [] if value is not None
+        }
+        missing_columns = [
+            column for column in REQUIRED_COLUMNS if column not in headers
+        ]
         if missing_columns:
             missing_label = ", ".join(missing_columns)
             raise UploadValidationError(
@@ -134,12 +143,18 @@ def validate_xlsx_file(input_file: Path) -> None:
             processed_rows += 1
 
             if processed_rows * MAX_SPREADSHEET_COLUMNS > MAX_SPREADSHEET_CELLS:
-                raise UploadValidationError("A planilha excede o limite de células permitido.", 422)
+                raise UploadValidationError(
+                    "A planilha excede o limite de células permitido.", 422
+                )
             if processed_rows > MAX_SPREADSHEET_ROWS:
-                raise UploadValidationError("A planilha excede o limite de linhas permitido.", 422)
+                raise UploadValidationError(
+                    "A planilha excede o limite de linhas permitido.", 422
+                )
 
         if processed_rows == 0:
-            raise UploadValidationError("A planilha não possui registros para processamento.", 422)
+            raise UploadValidationError(
+                "A planilha não possui registros para processamento.", 422
+            )
     finally:
         if workbook is not None:
             workbook.close()
@@ -147,7 +162,9 @@ def validate_xlsx_file(input_file: Path) -> None:
 
 def validate_xlsx_archive(input_file: Path) -> None:
     if not zipfile.is_zipfile(input_file):
-        raise UploadValidationError("O arquivo enviado não é uma planilha .xlsx válida.", 422)
+        raise UploadValidationError(
+            "O arquivo enviado não é uma planilha .xlsx válida.", 422
+        )
 
     total_uncompressed_size = 0
     try:
@@ -155,7 +172,9 @@ def validate_xlsx_archive(input_file: Path) -> None:
             for info in archive.infolist():
                 total_uncompressed_size += info.file_size
                 if total_uncompressed_size > MAX_XLSX_UNCOMPRESSED_SIZE_BYTES:
-                    raise UploadValidationError("A planilha excede o limite de tamanho permitido.", 422)
+                    raise UploadValidationError(
+                        "A planilha excede o limite de tamanho permitido.", 422
+                    )
     except zipfile.BadZipFile as exc:
         raise UploadValidationError(
             "O arquivo enviado não é uma planilha .xlsx válida.",

@@ -4,12 +4,8 @@ from datetime import UTC, datetime
 from config import DATABASE_PATH
 
 
-def get_database_path():
-    return DATABASE_PATH
-
-
 def get_connection():
-    database_path = get_database_path()
+    database_path = DATABASE_PATH
     database_path.parent.mkdir(parents=True, exist_ok=True)
 
     connection = sqlite3.connect(database_path)
@@ -20,8 +16,7 @@ def get_connection():
 
 def init_db():
     with get_connection() as connection:
-        connection.execute(
-            """
+        connection.execute("""
             CREATE TABLE IF NOT EXISTS automation_runs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 automation_id TEXT NOT NULL,
@@ -31,14 +26,11 @@ def init_db():
                 duration_seconds REAL,
                 error_message TEXT
             )
-            """
-        )
-        connection.execute(
-            """
+            """)
+        connection.execute("""
             CREATE INDEX IF NOT EXISTS idx_automation_runs_latest
             ON automation_runs (automation_id, id DESC)
-            """
-        )
+            """)
 
 
 def create_run(automation_id, started_at):
@@ -86,7 +78,9 @@ def finish_interrupted_runs(error_message):
         ).fetchall()
 
         for run in running_runs:
-            duration_seconds = calculate_duration_seconds(run["started_at"], finished_at)
+            duration_seconds = calculate_duration_seconds(
+                run["started_at"], finished_at
+            )
             connection.execute(
                 """
                 UPDATE automation_runs
@@ -104,8 +98,7 @@ def finish_interrupted_runs(error_message):
 
 def get_last_runs_by_automation():
     with get_connection() as connection:
-        rows = connection.execute(
-            """
+        rows = connection.execute("""
             SELECT ar.*
             FROM automation_runs ar
             INNER JOIN (
@@ -114,8 +107,7 @@ def get_last_runs_by_automation():
                 GROUP BY automation_id
             ) latest
             ON latest.max_id = ar.id
-            """
-        ).fetchall()
+            """).fetchall()
 
     return {row["automation_id"]: dict(row) for row in rows}
 

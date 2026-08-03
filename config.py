@@ -6,8 +6,12 @@ DATA_DIR = BASE_DIR / "data"
 DEFAULT_DATABASE_PATH = DATA_DIR / "automations.db"
 DEFAULT_UPLOAD_TEMP_DIR = DATA_DIR / "uploads"
 
-DATABASE_PATH = environ.get("DATABASE_PATH", str(DEFAULT_DATABASE_PATH))
-UPLOAD_TEMP_DIR = environ.get("UPLOAD_TEMP_DIR", str(DEFAULT_UPLOAD_TEMP_DIR))
+DATABASE_PATH = Path(
+    environ.get("DATABASE_PATH", str(DEFAULT_DATABASE_PATH))
+).expanduser()
+UPLOAD_TEMP_DIR = Path(
+    environ.get("UPLOAD_TEMP_DIR", str(DEFAULT_UPLOAD_TEMP_DIR))
+).expanduser()
 AUTH_USER = environ.get("USER_APP")
 AUTH_PASSWORD = environ.get("PASSWORD")
 SECRET_KEY = environ.get("SECRET_KEY")
