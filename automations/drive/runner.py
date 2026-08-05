@@ -20,8 +20,7 @@ def run(input_file: DataFrame) -> None:
             "Variável de ambiente DRIVE_UPDATE_WORKSHEET_NAME não configurada."
         )
 
-    dataframe = input_file
-    logger.info("Registros lidos da planilha enviada: %s", len(dataframe))
+    logger.info("Registros lidos da planilha enviada: %s", len(input_file))
 
     sheets_client = GoogleSheetsClient(DRIVE_UPDATE_SHEET_NAME)
     existing_protocols = sheets_client.get_existing_protocols(
@@ -30,7 +29,7 @@ def run(input_file: DataFrame) -> None:
     logger.info("Protocolos existentes consultados: %s", len(existing_protocols))
 
     headers = sheets_client.get_headers(DRIVE_UPDATE_WORKSHEET_NAME)
-    rows_to_insert = compare_to_update(dataframe, existing_protocols, headers)
+    rows_to_insert = compare_to_update(input_file, existing_protocols, headers)
 
     if rows_to_insert:
         sheets_client.append_rows(DRIVE_UPDATE_WORKSHEET_NAME, rows_to_insert)

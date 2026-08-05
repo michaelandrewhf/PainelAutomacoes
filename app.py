@@ -20,7 +20,6 @@ from auth import (
 )
 from automation_service import (
     bootstrap_automation_service,
-    is_automation_running,
     list_automations,
     start_automation,
 )
@@ -181,30 +180,19 @@ def run_automation(automation_id):
     if not validate_csrf_token(csrf_token_from_request()):
         return csrf_error_response()
 
-    prepared_upload = None
     runner_kwargs = None
 
     if automation_id == "drive-update":
-        if is_automation_running(automation_id):
-            return (
-                jsonify(
-                    {
-                        "error": "A automação de atualização do Drive já está em execução."
-                    }
-                ),
-                409,
-            )
-
         try:
-            prepared_upload = prepare_xlsx_upload(request.files.get("file"))
+            dataframe = prepare_xlsx_upload(request.files.get("file"))
         except UploadValidationError as error:
             logger.info(
                 "Upload da automação do Drive rejeitado: %s",
-                str(error),
+                error,
             )
             return jsonify({"error": str(error)}), error.status_code
 
-        runner_kwargs = {"input_file": prepared_upload}
+        runner_kwargs = {"input_file": dataframe}
 
     status, automation = start_automation(
         automation_id,
@@ -215,16 +203,12 @@ def run_automation(automation_id):
         return jsonify({"error": "Automação não encontrada."}), 404
 
     if status == "already_running":
-        if automation_id == "drive-update":
-            return (
-                jsonify(
-                    {
-                        "error": "A automação de atualização do Drive já está em execução."
-                    }
-                ),
-                409,
-            )
-        return jsonify({"error": "Esta automação já está em execução."}), 409
+        message = (
+            "A automação de atualização do Drive já está em execução."
+            if automation_id == "drive-update"
+            else "Esta automação já está em execução."
+        )
+        return jsonify({"error": message}), 409
 
     if status == "start_error":
         return jsonify({"error": "Não foi possível iniciar a automação."}), 500
