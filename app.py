@@ -25,7 +25,6 @@ from automation_service import (
     start_automation,
 )
 from config import (
-    MAX_UPLOAD_SIZE_BYTES,
     SECRET_KEY,
     SESSION_COOKIE_SECURE,
     SESSION_LIFETIME_HOURS,
@@ -42,7 +41,6 @@ if TRUST_PROXY:
 
 validate_auth_config()
 app.config["SECRET_KEY"] = SECRET_KEY
-app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE_BYTES
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = SESSION_COOKIE_SECURE
