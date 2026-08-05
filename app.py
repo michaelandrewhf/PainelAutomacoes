@@ -2,7 +2,6 @@ import logging
 import os
 import traceback
 from datetime import timedelta
-from functools import partial
 
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.exceptions import HTTPException
@@ -32,8 +31,7 @@ from config import (
     SESSION_LIFETIME_HOURS,
     TRUST_PROXY,
 )
-from upload_service import UploadValidationError, cleanup_upload, prepare_xlsx_upload
-
+from upload_service import UploadValidationError, prepare_xlsx_upload
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -116,7 +114,9 @@ def index():
 def login():
     if is_authenticated():
         return redirect(url_for("index"))
-    return render_template("login.html", csrf_token=get_csrf_token(), error_message=None)
+    return render_template(
+        "login.html", csrf_token=get_csrf_token(), error_message=None
+    )
 
 
 @app.post("/login")
@@ -185,11 +185,17 @@ def run_automation(automation_id):
 
     prepared_upload = None
     runner_kwargs = None
-    cleanup_callback = None
 
     if automation_id == "drive-update":
         if is_automation_running(automation_id):
-            return jsonify({"error": "A automação de atualização do Drive já está em execução."}), 409
+            return (
+                jsonify(
+                    {
+                        "error": "A automação de atualização do Drive já está em execução."
+                    }
+                ),
+                409,
+            )
 
         try:
             prepared_upload = prepare_xlsx_upload(request.files.get("file"))
@@ -200,31 +206,29 @@ def run_automation(automation_id):
             )
             return jsonify({"error": str(error)}), error.status_code
 
-        runner_kwargs = {"input_file": prepared_upload.input_file}
-
-        cleanup_callback = partial(cleanup_upload, prepared_upload)
+        runner_kwargs = {"input_file": prepared_upload}
 
     status, automation = start_automation(
         automation_id,
         runner_kwargs=runner_kwargs,
-        cleanup_callback=cleanup_callback,
     )
 
     if status == "not_found":
-        if prepared_upload:
-            cleanup_upload(prepared_upload)
         return jsonify({"error": "Automação não encontrada."}), 404
 
     if status == "already_running":
-        if prepared_upload:
-            cleanup_upload(prepared_upload)
         if automation_id == "drive-update":
-            return jsonify({"error": "A automação de atualização do Drive já está em execução."}), 409
+            return (
+                jsonify(
+                    {
+                        "error": "A automação de atualização do Drive já está em execução."
+                    }
+                ),
+                409,
+            )
         return jsonify({"error": "Esta automação já está em execução."}), 409
 
     if status == "start_error":
-        if prepared_upload:
-            cleanup_upload(prepared_upload)
         return jsonify({"error": "Não foi possível iniciar a automação."}), 500
 
     return (

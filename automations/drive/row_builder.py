@@ -2,6 +2,19 @@ import pandas as pd
 from pandas import DataFrame
 
 
+REQUIRED_COLUMNS = [
+    "SERVICO",
+    "AGENDAMENTO",
+    "CTDTDATAAGENDA",
+    "CTNOMESLOT",
+    "LOCALIDADE",
+    "PROTOCOLO",
+    "CTDTSOLICITACAO",
+    "CLIENTE",
+    "ENDERECO",
+    "BAIRRO",
+]
+
 COLUMN_MAPPING = {
     "SERVICO": "TIPO OS",
     "AGENDAMENTO": "STATUS",

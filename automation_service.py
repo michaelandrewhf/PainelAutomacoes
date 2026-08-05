@@ -12,8 +12,6 @@ from database import (
     get_last_runs_by_automation,
     init_db,
 )
-from upload_service import cleanup_stale_uploads
-
 
 logger = logging.getLogger(__name__)
 GENERIC_AUTOMATION_ERROR = "A automação falhou. Verifique os logs do container."
@@ -31,10 +29,7 @@ class AutomationLogHandler(logging.Handler):
         if record.levelno >= logging.ERROR:
             return
 
-        if not (
-            record.name == __name__
-            or record.name.startswith("automations.")
-        ):
+        if not (record.name == __name__ or record.name.startswith("automations.")):
             return
 
         thread_id = get_ident()
@@ -117,10 +112,6 @@ def format_duration(seconds):
     return f"{minutes} {minute_unit} e {remaining_seconds} {second_unit}"
 
 
-def get_automation(automation_id):
-    return AUTOMATIONS.get(automation_id)
-
-
 def automation_payload(automation_id, config, last_run):
     with running_lock:
         is_running = automation_id in running_automations
@@ -141,7 +132,9 @@ def automation_payload(automation_id, config, last_run):
         "last_started_at": last_run["started_at"] if last_run else None,
         "last_finished_at": last_run["finished_at"] if last_run else None,
         "duration_seconds": last_run["duration_seconds"] if last_run else None,
-        "duration_label": format_duration(last_run["duration_seconds"] if last_run else None),
+        "duration_label": format_duration(
+            last_run["duration_seconds"] if last_run else None
+        ),
         "error_message": last_run["error_message"] if last_run else None,
         "is_running": is_running,
         "execution_logs": get_execution_logs(automation_id),
@@ -156,7 +149,9 @@ def list_automations():
     ]
 
 
-def execute_automation(automation_id, run_id, runner, runner_kwargs=None, cleanup_callback=None):
+def execute_automation(
+    automation_id, run_id, runner, runner_kwargs=None, cleanup_callback=None
+):
     status = "success"
     error_message = None
     runner_kwargs = runner_kwargs or {}
@@ -169,7 +164,9 @@ def execute_automation(automation_id, run_id, runner, runner_kwargs=None, cleanu
     except Exception as exc:
         status = "error"
         error_message = (
-            str(exc) if isinstance(exc, PublicAutomationError) else GENERIC_AUTOMATION_ERROR
+            str(exc)
+            if isinstance(exc, PublicAutomationError)
+            else GENERIC_AUTOMATION_ERROR
         )
         logger.error(
             "Automation %s failed with %s.\n%s",
@@ -203,7 +200,7 @@ def execute_automation(automation_id, run_id, runner, runner_kwargs=None, cleanu
 
 
 def start_automation(automation_id, runner_kwargs=None, cleanup_callback=None):
-    config = get_automation(automation_id)
+    config = AUTOMATIONS.get(automation_id)
     if config is None:
         return "not_found", None
 
@@ -220,7 +217,13 @@ def start_automation(automation_id, runner_kwargs=None, cleanup_callback=None):
             run_id = create_run(automation_id, started_at)
             thread = Thread(
                 target=execute_automation,
-                args=(automation_id, run_id, config["runner"], runner_kwargs, cleanup_callback),
+                args=(
+                    automation_id,
+                    run_id,
+                    config["runner"],
+                    runner_kwargs,
+                    cleanup_callback,
+                ),
                 daemon=True,
             )
             thread.start()
@@ -255,7 +258,8 @@ def start_automation(automation_id, runner_kwargs=None, cleanup_callback=None):
 def bootstrap_automation_service():
     install_log_handler()
     init_db()
-    cleanup_stale_uploads()
-    interrupted = finish_interrupted_runs("Execução interrompida por reinicialização da aplicação.")
+    interrupted = finish_interrupted_runs(
+        "Execução interrompida por reinicialização da aplicação."
+    )
     if interrupted:
         logger.warning("Marked %s interrupted automation run(s) as error.", interrupted)
