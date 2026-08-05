@@ -3,7 +3,6 @@ import traceback
 from datetime import UTC, datetime
 from threading import Lock, Thread, get_ident
 
-from automation_errors import PublicAutomationError
 from automation_registry import AUTOMATIONS
 from database import (
     create_run,
@@ -164,9 +163,7 @@ def execute_automation(
     except Exception as exc:
         status = "error"
         error_message = (
-            str(exc)
-            if isinstance(exc, PublicAutomationError)
-            else GENERIC_AUTOMATION_ERROR
+            str(exc) if isinstance(exc, RuntimeError) else GENERIC_AUTOMATION_ERROR
         )
         logger.error(
             "Automation %s failed with %s.\n%s",

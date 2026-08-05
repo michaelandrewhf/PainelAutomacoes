@@ -1,7 +1,6 @@
 import logging
 from time import sleep
 
-from automation_errors import PublicAutomationError
 from config import SEND_NUMBERS
 
 from .services.cpfl_client import CPFLWorksClient
@@ -13,7 +12,6 @@ from .services.evolution_client import EvolutionClient
 from .services.gmail_client import GmailClient
 from .services.google_drive_client import GoogleDriveClient
 from .utils.parse_workes_response import CPFLWork
-
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +49,7 @@ def run():
     except EnvironmentValidationError as error:
         message = error.report.render()
         logger.error("Validação de ambiente da CPFL falhou:\n%s", message)
-        raise PublicAutomationError(
+        raise RuntimeError(
             "Configuração obrigatória da automação CPFL ausente ou inválida. "
             "Verifique os logs do container."
         ) from error
@@ -68,12 +66,10 @@ def run():
     message = cpfl_client.build_message(works)
 
     send_numbers = [
-        number.strip()
-        for number in str(SEND_NUMBERS).split(",")
-        if number.strip()
+        number.strip() for number in str(SEND_NUMBERS).split(",") if number.strip()
     ]
     if not send_numbers:
-        raise PublicAutomationError("Variável de ambiente SEND_NUMBERS não configurada.")
+        raise RuntimeError("Variável de ambiente SEND_NUMBERS não configurada.")
 
     for index, number in enumerate(send_numbers):
         response = evolution_client.notification(number, message)

@@ -4,9 +4,7 @@ from pathlib import Path
 import gspread
 from google.oauth2.service_account import Credentials
 
-from automation_errors import PublicAutomationError
 from config import DRIVE_UPDATE_GOOGLE_CREDENTIALS_FILE
-
 
 logger = logging.getLogger(__name__)
 
@@ -17,15 +15,19 @@ SCOPES = [
 
 
 class GoogleSheetsClient:
-    def __init__(self, sheet_name: str, credentials_file: str = DRIVE_UPDATE_GOOGLE_CREDENTIALS_FILE):
+    def __init__(
+        self,
+        sheet_name: str,
+        credentials_file: str = DRIVE_UPDATE_GOOGLE_CREDENTIALS_FILE,
+    ):
         if not credentials_file:
-            raise PublicAutomationError(
+            raise RuntimeError(
                 "Variável de ambiente DRIVE_UPDATE_GOOGLE_CREDENTIALS_FILE não configurada."
             )
 
         credentials_path = Path(credentials_file).expanduser()
         if not credentials_path.is_file():
-            raise PublicAutomationError(
+            raise RuntimeError(
                 "Arquivo de credenciais da automação do Drive não encontrado."
             )
 
@@ -56,7 +58,7 @@ class GoogleSheetsClient:
         try:
             os_index = normalized_headers.index("os")
         except ValueError as exc:
-            raise PublicAutomationError(
+            raise RuntimeError(
                 f'Coluna "OS" não encontrada na aba "{worksheet_name}".'
             ) from exc
 

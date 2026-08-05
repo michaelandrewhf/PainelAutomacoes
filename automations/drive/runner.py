@@ -1,6 +1,5 @@
 import logging
 from pandas import DataFrame
-from automation_errors import PublicAutomationError
 from config import DRIVE_UPDATE_SHEET_NAME, DRIVE_UPDATE_WORKSHEET_NAME
 
 from .row_builder import compare_to_update
@@ -13,11 +12,11 @@ def run(input_file: DataFrame) -> None:
     logger.info("Iniciando automação Atualização do Drive")
 
     if not DRIVE_UPDATE_SHEET_NAME:
-        raise PublicAutomationError(
+        raise RuntimeError(
             "Variável de ambiente DRIVE_UPDATE_SHEET_NAME não configurada."
         )
     if not DRIVE_UPDATE_WORKSHEET_NAME:
-        raise PublicAutomationError(
+        raise RuntimeError(
             "Variável de ambiente DRIVE_UPDATE_WORKSHEET_NAME não configurada."
         )
 
@@ -34,7 +33,7 @@ def run(input_file: DataFrame) -> None:
     rows_to_insert = compare_to_update(dataframe, existing_protocols, headers)
 
     if rows_to_insert:
-        # sheets_client.append_rows(DRIVE_UPDATE_WORKSHEET_NAME, rows_to_insert)
+        sheets_client.append_rows(DRIVE_UPDATE_WORKSHEET_NAME, rows_to_insert)
         logger.info("Registros adicionados com sucesso: %s", len(rows_to_insert))
     else:
         logger.info("Nenhum novo registro para adicionar")

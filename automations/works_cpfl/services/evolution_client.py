@@ -1,6 +1,5 @@
 import requests
 
-from automation_errors import PublicAutomationError
 from config import EVO_API_KEY, EVO_URL, INSTANCE
 
 
@@ -10,7 +9,7 @@ class EvolutionClient:
         self.__base_url = EVO_URL
         self.__instance = INSTANCE
         if self.__base_url and not self.__base_url.startswith("https://"):
-            raise PublicAutomationError("EVO_URL deve usar HTTPS.")
+            raise RuntimeError("EVO_URL deve usar HTTPS.")
         self.__headers = {"Content-Type": "application/json", "apikey": self.__api_key}
 
     def notification(self, number: str, msg: str):

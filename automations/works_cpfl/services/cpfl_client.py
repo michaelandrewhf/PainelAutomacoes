@@ -3,7 +3,6 @@ import logging
 
 import requests
 
-from automation_errors import PublicAutomationError
 from config import CPFL_API_URL, CPFL_CITY_IDS, RANGE_DAYS_CONSULT
 
 from automations.works_cpfl.utils.parse_workes_response import (
@@ -42,7 +41,7 @@ class CPFLWorksClient:
                 responses.append(response.json())
                 logger.info("Consulta CPFL concluída para %s", key)
             except requests.RequestException as exc:
-                raise PublicAutomationError(
+                raise RuntimeError(
                     f"Falha ao consultar obras da CPFL para {key}."
                 ) from exc
         return complete_response(responses)
