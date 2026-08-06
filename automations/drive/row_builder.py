@@ -1,7 +1,6 @@
 import pandas as pd
 from pandas import DataFrame
 
-
 REQUIRED_COLUMNS = [
     "SERVICO",
     "AGENDAMENTO",
@@ -28,16 +27,18 @@ COLUMN_MAPPING = {
     "BAIRRO": "BAIRRO",
 }
 
-SERVICE_MAPPING = {
+SOURCE_BY_DESTINATION = {
+    destination: source for source, destination in COLUMN_MAPPING.items()
+}
+
+VALUE_MAPPING = {
     "IMPLANTACAO EM NOVO ENDERECO DADOS": "MUDANÇA",
     "IMPLANTACAO DADOS": "INSTALAÇÃO",
     "IMPLANTACAO VOZ": "TELEFONIA",
     "IMPLANTACAO SUPER WIFI": "CASA ON",
-}
-
-CITY_MAPPING = {
     "PAULINIA": "PAULÍNIA",
     "COSMOPOLIS": "COSMÓPOLIS",
+    "NÃO AGENDADO": "AGENDAR",
 }
 
 
@@ -49,13 +50,7 @@ def sanitize_value(value):
         return value.strftime("%d/%m/%Y")
 
     value = str(value).strip()
-    value = SERVICE_MAPPING.get(value, value)
-    value = CITY_MAPPING.get(value, value)
-
-    if value == "NÃO AGENDADO":
-        return "AGENDAR"
-
-    return value
+    return VALUE_MAPPING.get(value, value)
 
 
 def normalize_protocol(protocol) -> str:
@@ -66,36 +61,43 @@ def normalize_protocol(protocol) -> str:
     if not protocol:
         return ""
 
-    if protocol[:2] == "00":
-        return protocol
-
-    return f"00{protocol}"
+    return protocol if protocol.startswith("00") else f"00{protocol}"
 
 
 def build_row(row, headers):
-    final_row = []
+    result = []
 
     for header in headers:
-        value = None
+        source = SOURCE_BY_DESTINATION.get(header)
 
-        for source, destination in COLUMN_MAPPING.items():
-            if destination == header:
-                value = sanitize_value(row[source])
-                if destination == "OS":
-                    value = normalize_protocol(value)
-                break
+        if source is None:
+            result.append("")
+            continue
 
-        final_row.append(value)
+        value = sanitize_value(row[source])
 
-    return final_row
+        if header == "OS":
+            value = normalize_protocol(value)
+
+        result.append(value)
+
+    return result
 
 
-def compare_to_update(xlsx_file: DataFrame, existing_protocols: set, headers: list) -> list:
-    rows_to_insert = []
-    for _, row in xlsx_file.iterrows():
-        protocol = normalize_protocol(str(row["PROTOCOLO"]))
+def compare_to_update(
+    dataframe: DataFrame,
+    existing_protocols: set[str],
+    headers: list[str],
+) -> list[list]:
+    rows = []
 
-        if protocol not in existing_protocols:
-            rows_to_insert.append(build_row(row, headers))
+    for _, row in dataframe.iterrows():
+        protocol = normalize_protocol(row["PROTOCOLO"])
 
-    return rows_to_insert
+        if not protocol or protocol in existing_protocols:
+            continue
+
+        rows.append(build_row(row, headers))
+        existing_protocols.add(protocol)
+
+    return rows
