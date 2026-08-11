@@ -32,7 +32,7 @@ Acesse:
 http://localhost:5000
 ```
 
-O Compose publica a porta apenas em `127.0.0.1:5000`, lê o `.env` por `env_file`, monta credenciais/token Google como leitura em `/run/secrets/`, persiste o SQLite no volume `automation_data` e executa a aplicação com Gunicorn usando um único worker.
+O Compose de produção expõe a porta `5000` para o proxy/rede Docker, lê o `.env` por `env_file`, monta credenciais Google como leitura em `/run/secrets/`, monta o diretório de token OAuth em `/run/tokens` como gravável, persiste o SQLite no volume `automation_data` e executa a aplicação com Gunicorn usando um único worker.
 
 Outros comandos:
 
@@ -323,6 +323,7 @@ Obrigatórias para Obras da CPFL:
 
 ```text
 GOOGLE_CREDENTIALS_FILE
+GOOGLE_TOKEN_DIR
 GOOGLE_TOKEN_FILE
 GOOGLE_DRIVE_FOLDER_ID
 GMAIL_USER_ID
@@ -343,6 +344,7 @@ GMAIL_MAX_RESULTS
 GOOGLE_DRIVE_SHARE_TYPE
 GOOGLE_DRIVE_SHARE_ROLE
 GOOGLE_DRIVE_SHARE_DOMAIN
+GOOGLE_OAUTH_INTERACTIVE
 ```
 
 Obrigatórias para Atualização do Drive:
@@ -366,19 +368,46 @@ UPLOAD_TEMP_DIR
 
 Configure `GMAIL_SENDER` ou `GMAIL_LABEL` para limitar a busca dos PDFs no Gmail.
 
-No Docker, `GOOGLE_CREDENTIALS_FILE`, `GOOGLE_TOKEN_FILE` e `DRIVE_UPDATE_GOOGLE_CREDENTIALS_FILE` no `.env` devem apontar para arquivos existentes no host. A credencial `credentials.json` trazida com a automação do Drive deve ficar no mesmo diretório seguro usado pela credencial da CPFL, com nome próprio, e ser referenciada por `DRIVE_UPDATE_GOOGLE_CREDENTIALS_FILE`.
+No Docker, `GOOGLE_CREDENTIALS_FILE` e `DRIVE_UPDATE_GOOGLE_CREDENTIALS_FILE` no `.env` devem apontar para arquivos existentes no host e sao montados como somente leitura. `GOOGLE_TOKEN_DIR` deve apontar para o diretorio persistente que contem `token.google.json`; esse diretorio e montado como gravavel porque o refresh OAuth regrava o token. `GOOGLE_TOKEN_FILE` continua util para execucao local e geracao manual do token, mas o Compose nao usa esse valor como origem de volume e sobrescreve a variavel dentro do container.
 
-O Compose monta esses arquivos no container como:
+Exemplo local:
+
+```env
+GOOGLE_CREDENTIALS_FILE=$HOME/.config/obras-cpfl/credentials.google.json
+DRIVE_UPDATE_GOOGLE_CREDENTIALS_FILE=$HOME/.config/obras-cpfl/drive_update_credentials.json
+GOOGLE_TOKEN_DIR=$HOME/.config/obras-cpfl/tokens
+GOOGLE_TOKEN_FILE=$HOME/.config/obras-cpfl/tokens/token.google.json
+GOOGLE_OAUTH_INTERACTIVE=false
+```
+
+O Compose monta esses caminhos no container como:
 
 ```text
 /run/secrets/google_credentials.json
-/run/secrets/google_token.json
 /run/secrets/drive_update_credentials.json
+/run/tokens/token.google.json
 ```
 
 e sobrescreve as variáveis dentro do container para esses caminhos.
 
-Para gerar ou renovar um token OAuth, execute a autenticação fora do container ou ajuste temporariamente a estratégia de OAuth. A execução pelo painel assume que o token já existe e é somente leitura.
+Para gerar ou regerar o token OAuth da automacao CPFL, use uma sessao local com navegador e a credencial OAuth configurada no Google Cloud para app instalado/desktop. O app pode estar com tela de consentimento em producao; o ponto importante e gerar o token com os mesmos escopos fixos usados pelo codigo (`gmail.readonly` e `drive.file`):
+
+```bash
+mkdir -p $HOME/.config/obras-cpfl/tokens
+chmod 700 $HOME/.config/obras-cpfl/tokens
+
+GOOGLE_CREDENTIALS_FILE=/caminho/seguro/google_credentials.json \
+GOOGLE_TOKEN_FILE=$HOME/.config/obras-cpfl/tokens/token.google.json \
+uv run python -m automations.works_cpfl.services.google_credentials
+
+chmod 600 $HOME/.config/obras-cpfl/tokens/token.google.json
+```
+
+Em desenvolvimento, o Docker apenas monta `GOOGLE_TOKEN_DIR` em `/run/tokens`; a automacao usa `/run/tokens/token.google.json` e renova esse arquivo quando fizer refresh.
+
+Em producao, gere ou regenere o token fora da VPS/container, copie `token.google.json` para o diretorio persistente configurado em `GOOGLE_TOKEN_DIR` na VPS e reinicie/recrie o container se necessario. Depois disso, o refresh futuro regrava o mesmo arquivo montado em `/run/tokens/token.google.json`.
+
+Mantenha `GOOGLE_OAUTH_INTERACTIVE=false` nos containers. A producao nao deve abrir navegador nem iniciar OAuth interativo; se o token estiver ausente, revogado, expirado sem `refresh_token` ou sem os escopos corretos, a validacao falha pedindo a geracao manual. Nao monte mais `token.google.json` diretamente como bind mount de arquivo; se esse arquivo for apagado nesse modelo antigo, o Docker pode recriar o caminho como diretorio no host.
 
 Não versione `.env`, credenciais Google ou tokens. `.dockerignore` e `.gitignore` excluem `.env`, `data/google/`, `data/drive/`, `data/uploads/` e arquivos comuns de credenciais/tokens.
 

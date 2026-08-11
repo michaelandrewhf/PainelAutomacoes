@@ -18,6 +18,7 @@ from config import (
     GOOGLE_DRIVE_SHARE_DOMAIN,
     GOOGLE_DRIVE_SHARE_ROLE,
     GOOGLE_DRIVE_SHARE_TYPE,
+    GOOGLE_OAUTH_INTERACTIVE,
     GOOGLE_TOKEN_FILE,
     INSTANCE,
     SEND_NUMBERS,
@@ -86,6 +87,7 @@ class EnvironmentValidator:
     )
     known_variables = (
         *required_variables,
+        "GOOGLE_OAUTH_INTERACTIVE",
         "GMAIL_SENDER",
         "GMAIL_LABEL",
         "GMAIL_MAX_RESULTS",
@@ -135,6 +137,7 @@ class EnvironmentValidator:
         return {
             "GOOGLE_CREDENTIALS_FILE": GOOGLE_CREDENTIALS_FILE,
             "GOOGLE_TOKEN_FILE": GOOGLE_TOKEN_FILE,
+            "GOOGLE_OAUTH_INTERACTIVE": GOOGLE_OAUTH_INTERACTIVE,
             "GOOGLE_DRIVE_FOLDER_ID": GOOGLE_DRIVE_FOLDER_ID,
             "GMAIL_USER_ID": GMAIL_USER_ID,
             "GMAIL_QUERY": GMAIL_QUERY,
@@ -199,9 +202,14 @@ class EnvironmentValidator:
             )
             return path
         if not path.exists():
-            self.report.warn(
-                "Token Google ausente; a autenticacao OAuth sera aberta no navegador"
-            )
+            if self._oauth_interactive_enabled():
+                self.report.warn(
+                    "Token Google ausente; a autenticacao OAuth sera aberta no navegador"
+                )
+            else:
+                self.report.warn(
+                    "Token Google ausente; gere o token OAuth antes de executar a automacao"
+                )
             return path
         if not path.is_file():
             self.report.fail(
@@ -288,7 +296,7 @@ class EnvironmentValidator:
                 credentials_file=str(credentials_file),
                 token_file=str(token_file),
             )
-            return loader.load()
+            return loader.load(interactive=self._oauth_interactive_enabled())
         except Exception as error:
             self.report.fail(
                 "Autenticacao Google invalida",
@@ -432,6 +440,10 @@ class EnvironmentValidator:
             return "recurso nao encontrado ou sem acesso para a conta autenticada"
         message = str(error).strip()
         return message or error.__class__.__name__
+
+    def _oauth_interactive_enabled(self) -> bool:
+        value = self._value("GOOGLE_OAUTH_INTERACTIVE").lower()
+        return value in {"1", "true", "yes", "sim"}
 
     def _google_status(self, error: Exception) -> int | None:
         return getattr(getattr(error, "resp", None), "status", None)

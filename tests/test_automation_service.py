@@ -544,6 +544,71 @@ class AutomationServiceTests(unittest.TestCase):
         self.assertIn("GOOGLE_CREDENTIALS_FILE ausente", report)
         self.assertIn("SEND_NUMBERS ausente", report)
 
+    def test_missing_google_token_reports_generation_required(self):
+        from automations.works_cpfl.services.environment_validator import (
+            EnvironmentValidationError,
+            EnvironmentValidator,
+        )
+
+        class FailingCredentialsLoader:
+            def __init__(self):
+                self.interactive = None
+
+            def load(self, *, interactive):
+                self.interactive = interactive
+                raise RuntimeError(
+                    "Token Google ausente, expirado ou sem os escopos exigidos. "
+                    "Gere o token OAuth inicial em um ambiente com navegador."
+                )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            credentials_file = Path(tmpdir) / "credentials.json"
+            credentials_file.write_text("{}", encoding="utf-8")
+            token_file = Path(tmpdir) / "token.google.json"
+            loader = FailingCredentialsLoader()
+            environ = {
+                "GOOGLE_CREDENTIALS_FILE": str(credentials_file),
+                "GOOGLE_TOKEN_FILE": str(token_file),
+                "GOOGLE_DRIVE_FOLDER_ID": "driveFolderId",
+                "GMAIL_USER_ID": "me",
+                "GMAIL_QUERY": "filename:pdf",
+                "GMAIL_SENDER": "cpfl@example.com",
+                "SEND_NUMBERS": "5511999999999",
+                "EVO_API_KEY": "api-key",
+                "EVO_URL": "https://evolution.example.com",
+                "INSTANCE": "instance",
+            }
+
+            with self.assertRaises(EnvironmentValidationError) as context:
+                EnvironmentValidator(
+                    environ=environ,
+                    credentials_loader=loader,
+                ).validate()
+
+        report = context.exception.report.render()
+        self.assertFalse(loader.interactive)
+        self.assertIn(
+            "Token Google ausente; gere o token OAuth antes de executar a automacao",
+            report,
+        )
+        self.assertIn("Gere o token OAuth inicial em um ambiente com navegador", report)
+
+    def test_google_credentials_default_is_non_interactive(self):
+        from automations.works_cpfl.services.google_credentials import GoogleCredentials
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            credentials_file = Path(tmpdir) / "credentials.json"
+            credentials_file.write_text("{}", encoding="utf-8")
+            token_file = Path(tmpdir) / "token.google.json"
+
+            with self.assertRaises(RuntimeError) as context:
+                GoogleCredentials(
+                    credentials_file=str(credentials_file),
+                    token_file=str(token_file),
+                ).load()
+
+        self.assertIn("Gere o token OAuth inicial", str(context.exception))
+
     def test_login_page_is_public(self):
         app, _ = self.load_app_with_temp_database()
 

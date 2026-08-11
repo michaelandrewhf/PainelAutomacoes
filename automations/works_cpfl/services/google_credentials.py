@@ -1,7 +1,9 @@
 from pathlib import Path
 import os
+import sys
+import webbrowser
 
-from config import GOOGLE_CREDENTIALS_FILE, GOOGLE_TOKEN_FILE
+from config import GOOGLE_CREDENTIALS_FILE, GOOGLE_OAUTH_INTERACTIVE, GOOGLE_TOKEN_FILE
 
 
 GOOGLE_SCOPES = (
@@ -19,12 +21,14 @@ class GoogleCredentials:
         self.credentials_file = credentials_file
         self.token_file = token_file
 
-    def load(self):
+    def load(self, *, interactive: bool | None = None):
         if not self.credentials_file:
             raise RuntimeError("Configure GOOGLE_CREDENTIALS_FILE no .env")
         if not self.token_file:
             raise RuntimeError("Configure GOOGLE_TOKEN_FILE no .env")
         self._validate_scopes()
+        if interactive is None:
+            interactive = self._oauth_interactive_enabled()
 
         from google.auth.transport.requests import Request
         from google.oauth2.credentials import Credentials
@@ -51,6 +55,13 @@ class GoogleCredentials:
             ):
                 credentials.refresh(Request())
             else:
+                if not interactive:
+                    raise RuntimeError(
+                        "Token Google ausente, expirado ou sem os escopos exigidos. "
+                        "Gere o token OAuth inicial em um ambiente com navegador e "
+                        "monte o arquivo em GOOGLE_TOKEN_FILE para a producao."
+                    )
+                self._ensure_browser_available()
                 flow = InstalledAppFlow.from_client_secrets_file(
                     str(credentials_path), GOOGLE_SCOPES
                 )
@@ -102,3 +113,49 @@ class GoogleCredentials:
         with os.fdopen(descriptor, "w", encoding="utf-8") as token_file:
             token_file.write(token_json)
         token_path.chmod(0o600)
+
+    def _ensure_browser_available(self) -> None:
+        if sys.platform.startswith("linux") and not any(
+            os.environ.get(variable)
+            for variable in ("DISPLAY", "WAYLAND_DISPLAY", "BROWSER")
+        ):
+            raise RuntimeError(
+                "Nao ha navegador disponivel neste ambiente para iniciar o OAuth. "
+                "Gere o token fora do container de producao e monte o arquivo em "
+                "GOOGLE_TOKEN_FILE."
+            )
+        try:
+            webbrowser.get()
+        except webbrowser.Error as error:
+            raise RuntimeError(
+                "Nao ha navegador executavel neste ambiente para iniciar o OAuth. "
+                "Gere o token fora do container de producao e monte o arquivo em "
+                "GOOGLE_TOKEN_FILE."
+            ) from error
+
+    def _oauth_interactive_enabled(self) -> bool:
+        return str(GOOGLE_OAUTH_INTERACTIVE).strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "sim",
+        }
+
+
+def main() -> None:
+    credentials = GoogleCredentials().load(interactive=True)
+    token_path = Path(GOOGLE_TOKEN_FILE or "").expanduser()
+    print("Token Google gerado/validado com sucesso.")
+    print(f"Arquivo: {token_path.name}")
+    print("Escopos:")
+    for scope in GOOGLE_SCOPES:
+        print(f"- {scope}")
+    if not getattr(credentials, "refresh_token", None):
+        print(
+            "Aviso: o token gerado nao contem refresh_token; remova o arquivo e "
+            "refaca o consentimento OAuth com acesso offline."
+        )
+
+
+if __name__ == "__main__":
+    main()

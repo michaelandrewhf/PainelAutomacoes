@@ -7,8 +7,11 @@ services:
     volumes:
       - .:/app
       - automation_data:/app/data
+
       - ${GOOGLE_CREDENTIALS_FILE:?configure GOOGLE_CREDENTIALS_FILE no .env}:/run/secrets/google_credentials.json:ro
-      - ${GOOGLE_TOKEN_FILE:?configure GOOGLE_TOKEN_FILE no .env}:/run/secrets/google_token.json
+
+      - ${GOOGLE_TOKEN_DIR:?configure GOOGLE_TOKEN_DIR no .env}:/run/tokens:rw
+
       - ${DRIVE_UPDATE_GOOGLE_CREDENTIALS_FILE:?configure DRIVE_UPDATE_GOOGLE_CREDENTIALS_FILE no .env}:/run/secrets/drive_update_credentials.json:ro
     env_file:
       - .env
@@ -17,7 +20,8 @@ services:
       FLASK_DEBUG: "0"
       DATABASE_PATH: /app/data/automations.db
       GOOGLE_CREDENTIALS_FILE: /run/secrets/google_credentials.json
-      GOOGLE_TOKEN_FILE: /run/secrets/google_token.json
+      GOOGLE_TOKEN_FILE: /run/tokens/token.google.json
+      GOOGLE_OAUTH_INTERACTIVE: "false"
       DRIVE_UPDATE_GOOGLE_CREDENTIALS_FILE: /run/secrets/drive_update_credentials.json
       UV_PROJECT_ENVIRONMENT: /opt/venv
     restart: unless-stopped
