@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 
 import gspread
+from gspread.utils import rowcol_to_a1
 from google.oauth2.service_account import Credentials
 
 from config import DRIVE_UPDATE_GOOGLE_CREDENTIALS_FILE
@@ -47,17 +48,40 @@ class GoogleSheetsClient:
         values = self.worksheet.col_values(os_column)
         return {str(value).strip() for value in values[1:][-100:] if value}
 
-    def append_rows(self, rows: list[list], os_column: int) -> None:
+    def append_rows(
+        self,
+        rows: list[list],
+        os_column: int,
+        aging_column: int,
+    ) -> None:
         start_row = len(self.worksheet.col_values(os_column)) + 1
         end_row = start_row + len(rows) - 1
 
         if end_row > self.worksheet.row_count:
             self.worksheet.add_rows(end_row - self.worksheet.row_count)
 
-        self.worksheet.update(
-            range_name=f"A{start_row}",
-            values=rows,
-            value_input_option="RAW",
-        )
+        aging_index = aging_column - 1
 
-        logger.info("Linhas adicionadas na planilha do Drive: %s", len(rows))
+        rows_before_aging = [row[:aging_index] for row in rows]
+        rows_after_aging = [row[aging_index + 1 :] for row in rows]
+
+        if rows_before_aging:
+            self.worksheet.update(
+                range_name=f"A{start_row}",
+                values=rows_before_aging,
+                value_input_option="RAW",
+            )
+
+        if rows_after_aging:
+            start_cell = rowcol_to_a1(start_row, aging_column + 1)
+
+            self.worksheet.update(
+                range_name=start_cell,
+                values=rows_after_aging,
+                value_input_option="RAW",
+            )
+
+        logger.info(
+            "Linhas adicionadas na planilha do Drive: %s",
+            len(rows),
+        )

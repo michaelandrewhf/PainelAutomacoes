@@ -32,6 +32,12 @@ def run(input_file: DataFrame) -> None:
         raise RuntimeError(
             f'Coluna "OS" não encontrada na aba "{DRIVE_UPDATE_WORKSHEET_NAME}".'
         ) from exc
+    try:
+        aging_column = headers.index("AGING") + 1
+    except ValueError as exc:
+        raise RuntimeError(
+            f'Coluna "AGING" não encontrada na aba "{DRIVE_UPDATE_WORKSHEET_NAME}".'
+        ) from exc
 
     existing_protocols = sheets.get_existing_protocols(os_column)
     logger.info(
@@ -46,7 +52,7 @@ def run(input_file: DataFrame) -> None:
     )
 
     if rows_to_insert:
-        sheets.append_rows(rows_to_insert, os_column)
+        sheets.append_rows(rows_to_insert, os_column, aging_column)
         logger.info(
             "Registros adicionados com sucesso: %s",
             len(rows_to_insert),
