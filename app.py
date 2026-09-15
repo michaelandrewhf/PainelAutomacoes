@@ -18,6 +18,7 @@ from auth import (
     validate_auth_config,
     validate_csrf_token,
 )
+from automation_registry import AUTOMATIONS
 from automation_service import (
     bootstrap_automation_service,
     list_automations,
@@ -181,13 +182,15 @@ def run_automation(automation_id):
         return csrf_error_response()
 
     runner_kwargs = None
+    automation_config = AUTOMATIONS.get(automation_id)
 
-    if automation_id == "drive-update":
+    if automation_config and automation_config.get("requires_file"):
         try:
             dataframe = prepare_xlsx_upload(request.files.get("file"))
         except UploadValidationError as error:
             logger.info(
-                "Upload da automação do Drive rejeitado: %s",
+                "Upload da automação %s rejeitado: %s",
+                automation_id,
                 error,
             )
             return jsonify({"error": str(error)}), error.status_code
@@ -203,12 +206,7 @@ def run_automation(automation_id):
         return jsonify({"error": "Automação não encontrada."}), 404
 
     if status == "already_running":
-        message = (
-            "A automação de atualização do Drive já está em execução."
-            if automation_id == "drive-update"
-            else "Esta automação já está em execução."
-        )
-        return jsonify({"error": message}), 409
+        return jsonify({"error": "Esta automação já está em execução."}), 409
 
     if status == "start_error":
         return jsonify({"error": "Não foi possível iniciar a automação."}), 500

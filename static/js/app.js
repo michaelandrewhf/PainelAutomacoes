@@ -136,6 +136,12 @@ async function submitDriveUpload() {
     return;
   }
 
+  const automationId = activeDriveCard?.dataset.automationId;
+  if (!automationId) {
+    showDriveUploadError("Não foi possível identificar a automação selecionada.");
+    return;
+  }
+
   const formData = new FormData();
   formData.append("file", file);
   setDriveUploadSubmitting(true);
@@ -143,7 +149,7 @@ async function submitDriveUpload() {
   clearPageMessage();
 
   try {
-    const response = await authenticatedFetch("/api/automations/drive-update/run", {
+    const response = await authenticatedFetch(`/api/automations/${automationId}/run`, {
       method: "POST",
       headers: {
         Accept: "application/json",

@@ -48,6 +48,28 @@ class GoogleSheetsClient:
         values = self.worksheet.col_values(os_column)
         return {str(value).strip() for value in values[1:][-100:] if value}
 
+    def append_rows_raw(
+        self,
+        rows: list[list],
+        anchor_column: int,
+    ) -> None:
+        start_row = len(self.worksheet.col_values(anchor_column)) + 1
+        end_row = start_row + len(rows) - 1
+
+        if end_row > self.worksheet.row_count:
+            self.worksheet.add_rows(end_row - self.worksheet.row_count)
+
+        self.worksheet.update(
+            range_name=f"A{start_row}",
+            values=rows,
+            value_input_option="RAW",
+        )
+
+        logger.info(
+            "Linhas adicionadas na planilha do Drive: %s",
+            len(rows),
+        )
+
     def append_rows(
         self,
         rows: list[list],
