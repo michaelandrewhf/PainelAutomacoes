@@ -54,4 +54,7 @@ def prepare_xlsx_upload(file: FileStorage | None) -> pd.DataFrame:
             status_code=422,
         )
 
-    return dataframe.loc[:, REQUIRED_COLUMNS].copy()
+    # Mantém todas as colunas do XLSX. A automação de OS continua usando apenas
+    # as colunas que já conhece, enquanto novas automações podem aproveitar
+    # campos adicionais como CPF e técnico sem um segundo parser de upload.
+    return dataframe.copy()
